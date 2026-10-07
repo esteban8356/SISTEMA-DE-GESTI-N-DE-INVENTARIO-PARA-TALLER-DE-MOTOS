@@ -20,8 +20,8 @@ import {
   Loader2,
   Image as ImageIcon,
   Tag,
-  Wrench,
-  Hash,
+  AlertCircle,
+  Filter,
 } from "lucide-react";
 
 export interface Repuesto {
@@ -32,6 +32,7 @@ export interface Repuesto {
   descripcion: string | null;
   codigo_fabricante: string | null;
   stock: number;
+  stock_minimo?: number;
   precio: number;
   categoria: string | null;
   marca_repuesto: string | null;
@@ -71,6 +72,7 @@ const INITIAL_FORM = {
   descripcion: "",
   codigo_fabricante: "",
   stock: 0,
+  stock_minimo: 5,
   precio: 0,
   categoria: "",
   marca_repuesto: "",
@@ -84,6 +86,7 @@ export default function InventarioPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [onlyCriticalStock, setOnlyCriticalStock] = useState(false);
   const [notification, setNotification] = useState<ToastMessage | null>(null);
 
   // Categorías y Marcas
@@ -124,6 +127,7 @@ export default function InventarioPage() {
           fotos: Array.isArray(item.fotos) ? item.fotos : [],
           precio: Number(item.precio || 0),
           stock: Number(item.stock || 0),
+          stock_minimo: item.stock_minimo !== undefined && item.stock_minimo !== null ? Number(item.stock_minimo) : 5,
         }))
       );
     } catch (err: unknown) {
@@ -175,6 +179,7 @@ export default function InventarioPage() {
       descripcion: repuesto.descripcion || "",
       codigo_fabricante: repuesto.codigo_fabricante || "",
       stock: repuesto.stock || 0,
+      stock_minimo: repuesto.stock_minimo ?? 5,
       precio: repuesto.precio || 0,
       categoria: repuesto.categoria || "",
       marca_repuesto: repuesto.marca_repuesto || "",
@@ -245,6 +250,7 @@ export default function InventarioPage() {
         descripcion: formData.descripcion.trim() || null,
         codigo_fabricante: formData.codigo_fabricante.trim() || null,
         stock: Number(formData.stock) || 0,
+        stock_minimo: Number(formData.stock_minimo) || 5,
         precio: Number(formData.precio) || 0,
         categoria: formData.categoria.trim() || null,
         marca_repuesto: formData.marca_repuesto.trim() || null,
@@ -293,19 +299,29 @@ export default function InventarioPage() {
     }
   };
 
+  // Conteo de repuestos en alerta de stock
+  const criticalItems = useMemo(() => {
+    return repuestos.filter((item) => item.stock <= (item.stock_minimo ?? 5));
+  }, [repuestos]);
+
   // Filtrado
   const filteredRepuestos = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
-    if (!q) return repuestos;
-    return repuestos.filter(
-      (item) =>
+    return repuestos.filter((item) => {
+      const minStock = item.stock_minimo ?? 5;
+      if (onlyCriticalStock && item.stock > minStock) {
+        return false;
+      }
+      if (!q) return true;
+      return (
         item.nombre.toLowerCase().includes(q) ||
         (item.codigo_fabricante && item.codigo_fabricante.toLowerCase().includes(q)) ||
         (item.marca_repuesto && item.marca_repuesto.toLowerCase().includes(q)) ||
         (item.categoria && item.categoria.toLowerCase().includes(q)) ||
         (item.descripcion && item.descripcion.toLowerCase().includes(q))
-    );
-  }, [repuestos, searchTerm]);
+      );
+    });
+  }, [repuestos, searchTerm, onlyCriticalStock]);
 
   return (
     <div className="flex-1 w-full flex flex-col gap-6 max-w-7xl mx-auto">
@@ -320,7 +336,7 @@ export default function InventarioPage() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Inventario de Repuestos</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Control de existencias, repuestos, precios y catálogo de piezas
+              Control de existencias, alertas de stock mínimo, repuestos y precios
             </p>
           </div>
         </div>
@@ -334,24 +350,63 @@ export default function InventarioPage() {
         </button>
       </div>
 
-      {/* Buscador */}
-      <div className="relative w-full">
-        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Buscar por repuesto, código de fabricante, marca o categoría..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl bg-card border border-input focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground"
-        />
-        {searchTerm && (
+      {/* HU-14: Banner de Alerta de Stock Crítico */}
+      {criticalItems.length > 0 && (
+        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-800 dark:text-rose-200 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold">
+                ¡Alerta de Stock Mínimo! Hay {criticalItems.length} repuesto(s) en nivel crítico
+              </h3>
+              <p className="text-xs text-rose-700/80 dark:text-rose-300/80">
+                La cantidad disponible es igual o inferior al stock mínimo configurado. Se recomienda reabastecer.
+              </p>
+            </div>
+          </div>
           <button
-            onClick={() => setSearchTerm("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+            onClick={() => setOnlyCriticalStock((prev) => !prev)}
+            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-rose-600 text-white hover:bg-rose-700 transition-colors shrink-0 shadow-xs cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            {onlyCriticalStock ? "Mostrar Todos" : "Filtrar Críticos"}
           </button>
-        )}
+        </div>
+      )}
+
+      {/* Buscador y Filtro Rápido */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar por repuesto, código de fabricante, marca o categoría..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-10 py-2.5 text-sm rounded-xl bg-card border border-input focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted-foreground"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={() => setOnlyCriticalStock((prev) => !prev)}
+          className={`inline-flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl border transition-colors cursor-pointer shrink-0 ${
+            onlyCriticalStock
+              ? "bg-rose-600 text-white border-rose-600 shadow-xs"
+              : "bg-card text-foreground hover:bg-muted border-input"
+          }`}
+        >
+          <Filter className="w-4 h-4" />
+          <span>Solo Stock Bajo ({criticalItems.length})</span>
+        </button>
       </div>
 
       {/* Contenido Tabla / Tarjetas */}
@@ -368,16 +423,19 @@ export default function InventarioPage() {
             </div>
             <h3 className="text-base font-bold">No se encontraron repuestos</h3>
             <p className="text-sm text-muted-foreground max-w-sm">
-              {searchTerm
-                ? "No hay repuestos que coincidan con el término de búsqueda."
+              {searchTerm || onlyCriticalStock
+                ? "No hay repuestos que coincidan con los filtros seleccionados."
                 : "Aún no tienes repuestos en el inventario. Añade el primero para comenzar."}
             </p>
-            {searchTerm ? (
+            {searchTerm || onlyCriticalStock ? (
               <button
-                onClick={() => setSearchTerm("")}
+                onClick={() => {
+                  setSearchTerm("");
+                  setOnlyCriticalStock(false);
+                }}
                 className="mt-2 text-xs font-semibold text-primary underline underline-offset-4"
               >
-                Limpiar búsqueda
+                Limpiar filtros
               </button>
             ) : (
               <button
@@ -396,7 +454,7 @@ export default function InventarioPage() {
                   <th className="py-3 px-4">Producto</th>
                   <th className="py-3 px-4 hidden sm:table-cell">Código / Marca</th>
                   <th className="py-3 px-4 hidden md:table-cell">Categoría</th>
-                  <th className="py-3 px-4">Stock</th>
+                  <th className="py-3 px-4">Stock / Estado</th>
                   <th className="py-3 px-4">Precio Venta</th>
                   <th className="py-3 px-4 text-right">Acciones</th>
                 </tr>
@@ -404,8 +462,16 @@ export default function InventarioPage() {
               <tbody className="divide-y divide-border">
                 {filteredRepuestos.map((item) => {
                   const firstPhoto = item.fotos?.[0];
+                  const minStock = item.stock_minimo ?? 5;
+                  const isCritical = item.stock <= minStock;
+
                   return (
-                    <tr key={item.id} className="hover:bg-muted/40 transition-colors group">
+                    <tr
+                      key={item.id}
+                      className={`hover:bg-muted/40 transition-colors group ${
+                        isCritical ? "bg-rose-500/[0.03]" : ""
+                      }`}
+                    >
                       {/* Nombre y Foto */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
@@ -464,19 +530,25 @@ export default function InventarioPage() {
                         </span>
                       </td>
 
-                      {/* Stock */}
+                      {/* Stock con Alerta HU-14 */}
                       <td className="py-3.5 px-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
-                            item.stock === 0
-                              ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                              : item.stock <= 5
-                              ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                          }`}
-                        >
-                          {item.stock} unid.
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              isCritical
+                                ? "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            }`}
+                          >
+                            {item.stock} unid.
+                          </span>
+                          {isCritical && (
+                            <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              Stock crítico (mín: {minStock})
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Precio */}
@@ -591,7 +663,22 @@ export default function InventarioPage() {
               />
             </div>
 
-            <div className="sm:col-span-2">
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-foreground">
+                Stock Mínimo de Alerta
+              </label>
+              <input
+                type="number"
+                min="1"
+                required
+                value={formData.stock_minimo}
+                onChange={(e) => setFormData((prev) => ({ ...prev, stock_minimo: Number(e.target.value) || 5 }))}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-[11px] text-muted-foreground">Avisar cuando quede esta cantidad o menos</span>
+            </div>
+
+            <div>
               <label className="block text-xs font-semibold mb-1 text-foreground">
                 Precio de Venta (COP) <span className="text-destructive">*</span>
               </label>
@@ -749,14 +836,12 @@ export default function InventarioPage() {
                 <span className="text-xs text-muted-foreground block">Stock Disponible</span>
                 <span
                   className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-bold mt-0.5 ${
-                    selectedRepuesto.stock === 0
-                      ? "bg-rose-500/15 text-rose-600"
-                      : selectedRepuesto.stock <= 5
-                      ? "bg-amber-500/15 text-amber-600"
-                      : "bg-emerald-500/15 text-emerald-600"
+                    selectedRepuesto.stock <= (selectedRepuesto.stock_minimo ?? 5)
+                      ? "bg-rose-500/15 text-rose-600 border border-rose-500/20"
+                      : "bg-emerald-500/15 text-emerald-600 border border-emerald-500/20"
                   }`}
                 >
-                  {selectedRepuesto.stock} unidades
+                  {selectedRepuesto.stock} unidades (Mín: {selectedRepuesto.stock_minimo ?? 5})
                 </span>
               </div>
               <div>

@@ -37,12 +37,18 @@ export default function Home() {
             <p className="text-lg text-slate-600 mb-8">
               Un sistema de gestión simple y ordenado para llevar el control de tu inventario, clientes y reparaciones de motocicletas.
             </p>
-            <div>
+            <div className="flex flex-wrap items-center gap-3">
               <Link
                 href={hasEnvVars ? "/auth/login" : "/"}
-                className="inline-block bg-blue-600 text-white font-medium px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-sm"
+                className="inline-block bg-blue-600 text-white font-semibold px-6 py-3 rounded-xl hover:bg-blue-700 transition shadow-xs"
               >
                 Ingresar al Sistema
+              </Link>
+              <Link
+                href="/consultar-orden"
+                className="inline-block bg-slate-100 text-slate-800 font-semibold px-6 py-3 rounded-xl hover:bg-slate-200 transition border border-slate-200"
+              >
+                ¿Eres cliente? Consulta tu Moto
               </Link>
             </div>
           </div>
