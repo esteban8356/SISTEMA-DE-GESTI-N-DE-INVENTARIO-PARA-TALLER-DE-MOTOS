@@ -2,28 +2,30 @@ import Link from "next/link";
 import { Button } from "./ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { LogoutButton } from "./logout-button";
+import { User } from "lucide-react";
 
 export async function AuthButton() {
   const supabase = await createClient();
-
-  // You can also use getUser() which will be slower.
   const { data } = await supabase.auth.getClaims();
-
   const user = data?.claims;
 
   return user ? (
-    <div className="flex items-center gap-4">
-      Hey, {user.email}!
+    <div className="flex items-center gap-3 text-xs sm:text-sm text-foreground">
+      <div className="flex items-center gap-1.5 font-medium">
+        <User className="w-4 h-4 text-muted-foreground" />
+        <span className="hidden sm:inline max-w-[150px] truncate">{user.email}</span>
+      </div>
       <LogoutButton />
     </div>
   ) : (
-    <div className="flex gap-2">
-      <Button asChild size="sm" className="bg-slate-900 text-white hover:bg-slate-800 border-none">
-        <Link href="/auth/login">Sign in</Link>
+    <div className="flex items-center gap-2">
+      <Button asChild size="sm" variant="outline" className="text-xs font-semibold">
+        <Link href="/auth/login">Iniciar Sesión</Link>
       </Button>
-      <Button asChild size="sm" variant={"outline"} className="text-slate-900 bg-white">
-        <Link href="/auth/sign-up">Sign up</Link>
+      <Button asChild size="sm" className="text-xs font-semibold">
+        <Link href="/auth/sign-up">Registrarse</Link>
       </Button>
     </div>
   );
 }
+

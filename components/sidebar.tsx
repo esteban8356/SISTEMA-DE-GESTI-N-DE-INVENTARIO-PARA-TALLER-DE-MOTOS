@@ -20,6 +20,12 @@ export function Sidebar() {
       icon: Package,
       exact: false,
     },
+    {
+      name: "Servicio Motos",
+      href: "/protected/servicios",
+      icon: Wrench,
+      exact: false,
+    },
   ];
 
   return (

@@ -39,8 +39,8 @@ export default function Home() {
             </p>
             <div>
               <Link
-                href={hasEnvVars ? "/sign-in" : "/"}
-                className="inline-block bg-blue-600 text-white font-medium px-8 py-3 rounded-lg hover:bg-blue-700 transition"
+                href={hasEnvVars ? "/auth/login" : "/"}
+                className="inline-block bg-blue-600 text-white font-medium px-8 py-3 rounded-lg hover:bg-blue-700 transition shadow-sm"
               >
                 Ingresar al Sistema
               </Link>
