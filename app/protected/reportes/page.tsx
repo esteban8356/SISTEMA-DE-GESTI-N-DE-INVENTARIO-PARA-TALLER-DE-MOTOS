@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, toFechaLocal, inicioDelDia, finDelDia } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ToastNotification } from "@/components/ui/toast-notification";
 import {
@@ -31,8 +31,8 @@ function getDefaultDates() {
   const hoy = new Date();
   const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
   return {
-    inicio: primerDia.toISOString().split("T")[0],
-    fin: hoy.toISOString().split("T")[0],
+    inicio: toFechaLocal(primerDia),
+    fin: toFechaLocal(hoy),
   };
 }
 
@@ -63,8 +63,8 @@ export default function ReportesPage() {
       let query = supabase
         .from("servicios")
         .select("id, created_at, placa, marca, cliente_nombre, cliente_telefono, problema_diagnostico, estado, costo")
-        .gte("created_at", `${fechaInicio}T00:00:00.000Z`)
-        .lte("created_at", `${fechaFin}T23:59:59.999Z`)
+        .gte("created_at", inicioDelDia(fechaInicio))
+        .lte("created_at", finDelDia(fechaFin))
         .order("created_at", { ascending: false });
 
       if (filtroEstado !== "Todos") {

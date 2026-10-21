@@ -28,23 +28,18 @@ async function DashboardContent() {
   // Consultas en paralelo para optimizar la carga
   const [
     { count: totalRepuestos },
-    { count: totalStockCritico },
-    { data: repuestosBajos },
+    { data: repuestosStock },
     { count: totalActivos },
     { count: totalListos },
     { data: ultimasOrdenes },
   ] = await Promise.all([
     // Total de repuestos
     supabase.from("repuestos").select("*", { count: "exact", head: true }),
-    // Total exacto de repuestos con stock crítico
-    supabase.from("repuestos").select("*", { count: "exact", head: true }).lte("stock", 5),
-    // Lista de repuestos con stock bajo (muestra hasta 5)
+    // Repuestos con su stock y stock mínimo, para calcular el stock crítico
     supabase
       .from("repuestos")
       .select("id, nombre, stock, stock_minimo, precio, categoria")
-      .lte("stock", 5)
-      .order("stock", { ascending: true })
-      .limit(5),
+      .order("stock", { ascending: true }),
     // Órdenes activas (Pendiente o En Reparación)
     supabase
       .from("servicios")
@@ -62,6 +57,13 @@ async function DashboardContent() {
       .order("created_at", { ascending: false })
       .limit(5),
   ]);
+
+  // Mismo criterio que el inventario (HU-14): stock <= stock mínimo (5 por defecto)
+  const repuestosCriticos = (repuestosStock ?? []).filter(
+    (r) => Number(r.stock) <= Number(r.stock_minimo ?? 5)
+  );
+  const totalStockCritico = repuestosCriticos.length;
+  const repuestosBajos = repuestosCriticos.slice(0, 5);
 
   const metricas = [
     {
