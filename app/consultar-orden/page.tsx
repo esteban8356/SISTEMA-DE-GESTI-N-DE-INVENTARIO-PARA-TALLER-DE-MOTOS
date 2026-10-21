@@ -32,6 +32,21 @@ const PASOS_ESTADO = [
   { clave: "Entregado", label: "Entregado", desc: "Servicio completado y entregado" },
 ];
 
+const PASO_INDEX: Record<string, number> = {
+  Pendiente: 0,
+  "En Reparación": 1,
+  Listo: 2,
+  Entregado: 3,
+};
+
+const ESTADO_BADGE_STYLE: Record<string, string> = {
+  Listo: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  "En Reparación": "bg-blue-100 text-blue-800 border-blue-300",
+  Entregado: "bg-purple-100 text-purple-800 border-purple-300",
+  Cancelado: "bg-rose-100 text-rose-800 border-rose-300",
+  Pendiente: "bg-amber-100 text-amber-800 border-amber-300",
+};
+
 export default function ConsultarOrdenPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -52,14 +67,12 @@ export default function ConsultarOrdenPage() {
 
       const supabase = createClient();
 
-      // Buscar por ID o por Placa
       let req = supabase
         .from("servicios")
         .select("id, created_at, placa, marca, estado, problema_diagnostico")
         .order("created_at", { ascending: false })
         .limit(1);
 
-      // Si parece UUID o texto largo busca por ID, de lo contrario por placa
       if (cleanQuery.length >= 8 && cleanQuery.includes("-")) {
         req = req.eq("id", cleanQuery);
       } else {
@@ -67,7 +80,6 @@ export default function ConsultarOrdenPage() {
       }
 
       const { data, error } = await req;
-
       if (error) throw error;
 
       if (data && data.length > 0) {
@@ -75,29 +87,14 @@ export default function ConsultarOrdenPage() {
       } else {
         setErrorMsg("Orden no encontrada. Verifica el número de orden o la placa de tu moto.");
       }
-    } catch (err: unknown) {
+    } catch {
       setErrorMsg("Ocurrió un error al consultar el estado. Por favor intenta más tarde.");
     } finally {
       setLoading(false);
     }
   };
 
-  const getPasoIndex = (estado: string) => {
-    switch (estado) {
-      case "Pendiente":
-        return 0;
-      case "En Reparación":
-        return 1;
-      case "Listo":
-        return 2;
-      case "Entregado":
-        return 3;
-      default:
-        return 0;
-    }
-  };
-
-  const pasoActual = resultado ? getPasoIndex(resultado.estado) : 0;
+  const pasoActual = resultado ? PASO_INDEX[resultado.estado] ?? 0 : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col justify-between">
@@ -166,7 +163,7 @@ export default function ConsultarOrdenPage() {
           </form>
         </div>
 
-        {/* Mensaje de Error / No encontrado */}
+        {/* Mensaje de Error */}
         {searched && errorMsg && !loading && (
           <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center text-rose-800 animate-in fade-in">
             <div className="inline-flex p-3 rounded-full bg-rose-100 text-rose-600 mb-2">
@@ -202,16 +199,8 @@ export default function ConsultarOrdenPage() {
                 </span>
                 <div className="mt-0.5">
                   <span
-                    className={`inline-block px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wide ${
-                      resultado.estado === "Listo"
-                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                        : resultado.estado === "En Reparación"
-                        ? "bg-blue-100 text-blue-800 border border-blue-300"
-                        : resultado.estado === "Entregado"
-                        ? "bg-purple-100 text-purple-800 border border-purple-300"
-                        : resultado.estado === "Cancelado"
-                        ? "bg-rose-100 text-rose-800 border border-rose-300"
-                        : "bg-amber-100 text-amber-800 border border-amber-300"
+                    className={`inline-block px-3 py-1 rounded-lg text-xs font-extrabold uppercase tracking-wide border ${
+                      ESTADO_BADGE_STYLE[resultado.estado] || ESTADO_BADGE_STYLE.Pendiente
                     }`}
                   >
                     {resultado.estado}
@@ -273,7 +262,7 @@ export default function ConsultarOrdenPage() {
               </div>
             )}
 
-            {/* Detalles básicos permitidos para el cliente */}
+            {/* Detalles permitidos para el cliente */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100 flex flex-col gap-2">
               <div className="flex items-center gap-1.5 text-xs text-slate-600">
                 <Calendar className="w-3.5 h-3.5" />

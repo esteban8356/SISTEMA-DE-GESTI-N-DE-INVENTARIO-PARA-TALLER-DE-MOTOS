@@ -4,9 +4,14 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadFilesToBucket, deleteFilesFromBucket } from "@/lib/storage";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { usePhotoUpload } from "@/hooks/use-photo-upload";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
-import { ToastNotification, ToastMessage } from "@/components/ui/toast-notification";
+import { ToastNotification } from "@/components/ui/toast-notification";
 import { Modal } from "@/components/ui/modal";
+import { PhotoUploader } from "@/components/ui/photo-uploader";
+import { PhotoGallery } from "@/components/ui/photo-gallery";
+import { ConfirmDeleteModal } from "@/components/ui/confirm-delete-modal";
 import {
   Search,
   Plus,
@@ -14,11 +19,8 @@ import {
   Trash2,
   Eye,
   Wrench,
-  AlertTriangle,
-  UploadCloud,
   X,
   Loader2,
-  Image as ImageIcon,
   Phone,
   Bike,
   ExternalLink,
@@ -110,6 +112,14 @@ const INITIAL_FORM = {
 
 export default function ServiciosPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { notification, showNotification, clearNotification } = useToast();
+  const {
+    newFiles,
+    newFilePreviews,
+    handleFileChange,
+    removeNewFile,
+    clearNewFiles,
+  } = usePhotoUpload();
 
   const [servicios, setServicios] = useState<ServicioMoto[]>([]);
   const [marcasList, setMarcasList] = useState<string[]>(MARCAS_MOTO_DEFAULT);
@@ -117,7 +127,6 @@ export default function ServiciosPage() {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState<string>("Todos");
-  const [notification, setNotification] = useState<ToastMessage | null>(null);
 
   // Modales
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -129,16 +138,8 @@ export default function ServiciosPage() {
 
   // Form State
   const [formData, setFormData] = useState<{ id?: string } & typeof INITIAL_FORM>(INITIAL_FORM);
-  const [newFiles, setNewFiles] = useState<File[]>([]);
-  const [newFilePreviews, setNewFilePreviews] = useState<string[]>([]);
-  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
-  const showNotification = useCallback((type: "success" | "error", message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 4000);
-  }, []);
-
-  // Cargar datos
+  // Cargar servicios
   const fetchServicios = useCallback(async () => {
     try {
       setLoading(true);
@@ -150,7 +151,7 @@ export default function ServiciosPage() {
       if (error) throw error;
 
       setServicios(
-        (data || []).map((item) => ({
+        ((data as any[]) || []).map((item: any) => ({
           ...item,
           fotos: Array.isArray(item.fotos) ? item.fotos : [],
           costo: Number(item.costo || 0),
@@ -167,7 +168,7 @@ export default function ServiciosPage() {
     try {
       const { data } = await supabase.from("marcas").select("nombre").order("nombre", { ascending: true });
       if (data?.length) {
-        setMarcasList(data.map((m) => m.nombre));
+        setMarcasList(data.map((m: { nombre: string }) => m.nombre));
       }
     } catch {
       // Usar defaults
@@ -179,23 +180,16 @@ export default function ServiciosPage() {
     fetchMarcas();
   }, [fetchServicios, fetchMarcas]);
 
-  // Limpiar previews
-  const clearFilePreviews = useCallback(() => {
-    newFilePreviews.forEach((url) => URL.revokeObjectURL(url));
-    setNewFiles([]);
-    setNewFilePreviews([]);
-  }, [newFilePreviews]);
-
   // Handlers de Modales
   const handleOpenCreate = () => {
-    clearFilePreviews();
+    clearNewFiles();
     setSelectedServicio(null);
     setFormData(INITIAL_FORM);
     setIsFormOpen(true);
   };
 
   const handleOpenEdit = (servicio: ServicioMoto) => {
-    clearFilePreviews();
+    clearNewFiles();
     setSelectedServicio(servicio);
     setFormData({
       id: servicio.id,
@@ -213,7 +207,6 @@ export default function ServiciosPage() {
 
   const handleOpenDetail = (servicio: ServicioMoto) => {
     setSelectedServicio(servicio);
-    setActivePhotoIndex(0);
     setIsDetailOpen(true);
   };
 
@@ -225,20 +218,6 @@ export default function ServiciosPage() {
   const handleOpenDelete = (servicio: ServicioMoto) => {
     setSelectedServicio(servicio);
     setIsDeleteOpen(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return;
-    const filesArray = Array.from(e.target.files);
-    setNewFiles((prev) => [...prev, ...filesArray]);
-    const previews = filesArray.map((file) => URL.createObjectURL(file));
-    setNewFilePreviews((prev) => [...prev, ...previews]);
-  };
-
-  const removeNewFile = (index: number) => {
-    URL.revokeObjectURL(newFilePreviews[index]);
-    setNewFiles((prev) => prev.filter((_, i) => i !== index));
-    setNewFilePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeExistingPhoto = (urlToRemove: string) => {
@@ -295,7 +274,7 @@ export default function ServiciosPage() {
       }
 
       setIsFormOpen(false);
-      clearFilePreviews();
+      clearNewFiles();
       fetchServicios();
     } catch (err: unknown) {
       showNotification("error", err instanceof Error ? err.message : "Error al guardar orden.");
@@ -353,7 +332,7 @@ export default function ServiciosPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col gap-6 max-w-7xl mx-auto">
-      <ToastNotification notification={notification} onClose={() => setNotification(null)} />
+      <ToastNotification notification={notification} onClose={clearNotification} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
@@ -420,7 +399,7 @@ export default function ServiciosPage() {
         </div>
       </div>
 
-      {/* Tabla / Listado */}
+      {/* Tabla de Servicios */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
         {loading ? (
           <div className="p-16 flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -444,14 +423,14 @@ export default function ServiciosPage() {
                   setSearchTerm("");
                   setFilterEstado("Todos");
                 }}
-                className="mt-2 text-xs font-semibold text-primary underline underline-offset-4"
+                className="mt-2 text-xs font-semibold text-primary underline underline-offset-4 cursor-pointer"
               >
                 Restablecer filtros
               </button>
             ) : (
               <button
                 onClick={handleOpenCreate}
-                className="mt-2 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                className="mt-2 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Registrar Primera Moto
               </button>
@@ -702,57 +681,15 @@ export default function ServiciosPage() {
             </div>
           </div>
 
-          {/* Fotos */}
-          <div className="pt-2 border-t">
-            <label className="block text-xs font-semibold mb-2 text-foreground">
-              Fotos del Estado de la Moto / Reparación ({formData.fotos.length + newFiles.length})
-            </label>
-
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-3">
-              {formData.fotos.map((url, idx) => (
-                <div key={url} className="relative aspect-square rounded-xl border bg-muted overflow-hidden group">
-                  <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removeExistingPhoto(url)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
-                    title="Eliminar foto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              {newFilePreviews.map((preview, idx) => (
-                <div key={preview} className="relative aspect-square rounded-xl border-2 border-primary/40 bg-muted overflow-hidden group">
-                  <img src={preview} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded font-bold">
-                    Nueva
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeNewFile(idx)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
-                    title="Quitar foto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              <label className="aspect-square rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/60 bg-muted/20 hover:bg-muted/40 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-colors p-2 text-center">
-                <UploadCloud className="w-6 h-6 text-muted-foreground" />
-                <span className="text-[11px] font-semibold text-muted-foreground">Agregar Foto</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
+          {/* Subida de Fotos Reutilizable */}
+          <PhotoUploader
+            existingPhotos={formData.fotos}
+            newFilePreviews={newFilePreviews}
+            onRemoveExisting={removeExistingPhoto}
+            onRemoveNew={removeNewFile}
+            onFileChange={handleFileChange}
+            label="Fotos del Estado de la Moto / Reparación"
+          />
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <button
@@ -785,38 +722,12 @@ export default function ServiciosPage() {
       >
         {selectedServicio && (
           <div className="flex flex-col gap-4">
-            {/* Galería */}
-            {selectedServicio.fotos?.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <div className="relative aspect-video w-full rounded-2xl bg-muted border overflow-hidden">
-                  <img
-                    src={selectedServicio.fotos[activePhotoIndex] || selectedServicio.fotos[0]}
-                    alt={selectedServicio.placa}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                {selectedServicio.fotos.length > 1 && (
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {selectedServicio.fotos.map((url, idx) => (
-                      <button
-                        key={url}
-                        onClick={() => setActivePhotoIndex(idx)}
-                        className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden shrink-0 transition-all ${
-                          activePhotoIndex === idx ? "border-primary scale-95" : "border-transparent opacity-60"
-                        }`}
-                      >
-                        <img src={url} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="aspect-video w-full rounded-2xl bg-muted border flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <ImageIcon className="w-8 h-8 opacity-40" />
-                <span className="text-xs">Sin fotos adjuntas</span>
-              </div>
-            )}
+            {/* Galería Reutilizable */}
+            <PhotoGallery
+              photos={selectedServicio.fotos}
+              altTitle={selectedServicio.placa}
+              emptyText="Sin fotos adjuntas"
+            />
 
             {/* Datos */}
             <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-muted/40 border">
@@ -897,7 +808,7 @@ export default function ServiciosPage() {
         )}
       </Modal>
 
-      {/* HU-15: Modal de Historial de Reparaciones por Moto */}
+      {/* Modal Historial de Reparaciones (HU-15) */}
       <Modal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
@@ -979,38 +890,15 @@ export default function ServiciosPage() {
         </div>
       </Modal>
 
-      {/* Modal Eliminar */}
-      <Modal
+      {/* Modal Eliminar Reutilizable */}
+      <ConfirmDeleteModal
         isOpen={isDeleteOpen}
         onClose={() => setIsDeleteOpen(false)}
+        onConfirm={handleDelete}
         title="Confirmar Eliminación"
-        icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
-        maxWidth="md"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            ¿Estás seguro de que deseas eliminar la orden de servicio de la moto{" "}
-            <span className="font-bold text-foreground">"{selectedServicio?.placa}"</span>? Esta acción también eliminará sus fotos asociadas en storage.
-          </p>
-
-          <div className="flex justify-end gap-3 pt-3 border-t">
-            <button
-              onClick={() => setIsDeleteOpen(false)}
-              className="px-4 py-2 text-sm font-semibold rounded-xl border hover:bg-muted transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              <span>Eliminar Orden</span>
-            </button>
-          </div>
-        </div>
-      </Modal>
+        itemDescription={`la orden de la moto "${selectedServicio?.placa}"`}
+        loading={saving}
+      />
     </div>
   );
 }

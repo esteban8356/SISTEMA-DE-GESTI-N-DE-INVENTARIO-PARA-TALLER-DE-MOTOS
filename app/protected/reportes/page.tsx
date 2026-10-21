@@ -3,12 +3,11 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { ToastNotification, ToastMessage } from "@/components/ui/toast-notification";
+import { useToast } from "@/hooks/use-toast";
+import { ToastNotification } from "@/components/ui/toast-notification";
 import {
   FileText,
   Download,
-  Calendar,
-  Filter,
   Loader2,
   Bike,
   CheckCircle2,
@@ -28,8 +27,18 @@ export interface ReporteServicio {
   costo: number;
 }
 
+function getDefaultDates() {
+  const hoy = new Date();
+  const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  return {
+    inicio: primerDia.toISOString().split("T")[0],
+    fin: hoy.toISOString().split("T")[0],
+  };
+}
+
 export default function ReportesPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { notification, showNotification, clearNotification } = useToast();
 
   const [fechaInicio, setFechaInicio] = useState<string>("");
   const [fechaFin, setFechaFin] = useState<string>("");
@@ -38,20 +47,12 @@ export default function ReportesPage() {
 
   const [servicios, setServicios] = useState<ReporteServicio[]>([]);
   const [loading, setLoading] = useState(true);
-  const [notification, setNotification] = useState<ToastMessage | null>(null);
-
-  const showNotification = useCallback((type: "success" | "error", message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 4000);
-  }, []);
 
   // Inicializar fechas al montar
   useEffect(() => {
-    const hoy = new Date();
-    const primerDia = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-    const formatInputDate = (d: Date) => d.toISOString().split("T")[0];
-    setFechaInicio(formatInputDate(primerDia));
-    setFechaFin(formatInputDate(hoy));
+    const defaults = getDefaultDates();
+    setFechaInicio(defaults.inicio);
+    setFechaFin(defaults.fin);
   }, []);
 
   // Cargar reporte según el rango de fechas
@@ -74,7 +75,7 @@ export default function ReportesPage() {
       if (error) throw error;
 
       setServicios(
-        (data || []).map((item) => ({
+        ((data as any[]) || []).map((item: any) => ({
           ...item,
           costo: Number(item.costo || 0),
         }))
@@ -103,14 +104,16 @@ export default function ReportesPage() {
     );
   }, [servicios, searchTerm]);
 
-  // Métricas
-  const totalCosto = useMemo(() => {
-    return filteredServicios.reduce((sum, item) => sum + (item.costo || 0), 0);
-  }, [filteredServicios]);
+  // Métricas acumuladas
+  const totalCosto = useMemo(
+    () => filteredServicios.reduce((sum, item) => sum + (item.costo || 0), 0),
+    [filteredServicios]
+  );
 
-  const totalCompletados = useMemo(() => {
-    return filteredServicios.filter((item) => item.estado === "Listo" || item.estado === "Entregado").length;
-  }, [filteredServicios]);
+  const totalCompletados = useMemo(
+    () => filteredServicios.filter((item) => item.estado === "Listo" || item.estado === "Entregado").length,
+    [filteredServicios]
+  );
 
   // Exportar a CSV (HU-17)
   const exportarCSV = () => {
@@ -133,10 +136,10 @@ export default function ReportesPage() {
     const rows = filteredServicios.map((s) => [
       `"${formatDate(s.created_at)}"`,
       `"${s.placa}"`,
-      `"${s.marca || 'N/A'}"`,
+      `"${s.marca || "N/A"}"`,
       `"${s.cliente_nombre.replace(/"/g, '""')}"`,
-      `"${s.cliente_telefono || 'N/A'}"`,
-      `"${(s.problema_diagnostico || '').replace(/"/g, '""').replace(/\n/g, ' ')}"`,
+      `"${s.cliente_telefono || "N/A"}"`,
+      `"${(s.problema_diagnostico || "").replace(/"/g, '""').replace(/\n/g, " ")}"`,
       `"${s.estado}"`,
       s.costo,
     ]);
@@ -157,7 +160,7 @@ export default function ReportesPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col gap-6 max-w-7xl mx-auto">
-      <ToastNotification notification={notification} onClose={() => setNotification(null)} />
+      <ToastNotification notification={notification} onClose={clearNotification} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
@@ -188,26 +191,22 @@ export default function ReportesPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full md:w-auto flex-1">
           <div>
             <label className="block text-xs font-semibold mb-1 text-foreground">Fecha Inicial</label>
-            <div className="relative">
-              <input
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
+            <input
+              type="date"
+              value={fechaInicio}
+              onChange={(e) => setFechaInicio(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
           </div>
 
           <div>
             <label className="block text-xs font-semibold mb-1 text-foreground">Fecha Final</label>
-            <div className="relative">
-              <input
-                type="date"
-                value={fechaFin}
-                onChange={(e) => setFechaFin(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-            </div>
+            <input
+              type="date"
+              value={fechaFin}
+              onChange={(e) => setFechaFin(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-xl border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
           </div>
 
           <div>

@@ -12,8 +12,15 @@ import {
   Loader2,
   Bike,
   FileText,
-  AlertCircle,
 } from "lucide-react";
+
+const STATUS_BADGES: Record<string, string> = {
+  Listo: "bg-emerald-500/15 text-emerald-600",
+  "En Reparación": "bg-blue-500/15 text-blue-600",
+  Entregado: "bg-purple-500/15 text-purple-600",
+  Pendiente: "bg-amber-500/15 text-amber-600",
+  Cancelado: "bg-rose-500/15 text-rose-600",
+};
 
 async function DashboardContent() {
   const supabase = await createClient();
@@ -21,6 +28,7 @@ async function DashboardContent() {
   // Consultas en paralelo para optimizar la carga
   const [
     { count: totalRepuestos },
+    { count: totalStockCritico },
     { data: repuestosBajos },
     { count: totalActivos },
     { count: totalListos },
@@ -28,7 +36,9 @@ async function DashboardContent() {
   ] = await Promise.all([
     // Total de repuestos
     supabase.from("repuestos").select("*", { count: "exact", head: true }),
-    // Repuestos con stock bajo (ordenados por menor stock)
+    // Total exacto de repuestos con stock crítico
+    supabase.from("repuestos").select("*", { count: "exact", head: true }).lte("stock", 5),
+    // Lista de repuestos con stock bajo (muestra hasta 5)
     supabase
       .from("repuestos")
       .select("id, nombre, stock, stock_minimo, precio, categoria")
@@ -53,80 +63,69 @@ async function DashboardContent() {
       .limit(5),
   ]);
 
-  const stockCriticoCount = repuestosBajos ? repuestosBajos.length : 0;
+  const metricas = [
+    {
+      titulo: "Órdenes Activas",
+      valor: totalActivos ?? 0,
+      subtexto: "En taller",
+      icono: Clock,
+      color: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    },
+    {
+      titulo: "Listas para Entrega",
+      valor: totalListos ?? 0,
+      subtexto: "Listas",
+      icono: CheckCircle2,
+      color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      titulo: "Stock Crítico",
+      valor: totalStockCritico ?? 0,
+      subtexto: "Repuestos",
+      icono: AlertTriangle,
+      color: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+      valorColor: "text-rose-600 dark:text-rose-400",
+    },
+    {
+      titulo: "Total Catálogo",
+      valor: totalRepuestos ?? 0,
+      subtexto: "Piezas",
+      icono: Package,
+      color: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
-      {/* HU-18: Tarjetas de Resumen de Métricas */}
+      {/* Tarjetas de Resumen de Métricas (HU-18) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Órdenes Activas */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Órdenes Activas
-            </span>
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Clock className="w-5 h-5" />
+        {metricas.map((m) => {
+          const Icon = m.icono;
+          return (
+            <div
+              key={m.titulo}
+              className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {m.titulo}
+                </span>
+                <div className={`p-2 rounded-xl ${m.color}`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className={`text-3xl font-black ${m.valorColor || "text-foreground"}`}>
+                  {m.valor}
+                </span>
+                <span className="text-xs text-muted-foreground font-semibold">{m.subtexto}</span>
+              </div>
             </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-foreground">{totalActivos ?? 0}</span>
-            <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold">En taller</span>
-          </div>
-        </div>
-
-        {/* 2. Listas para Entrega */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Listas para Entrega
-            </span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-foreground">{totalListos ?? 0}</span>
-            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Listas</span>
-          </div>
-        </div>
-
-        {/* 3. Repuestos en Stock Crítico */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Stock Crítico
-            </span>
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-rose-600 dark:text-rose-400">
-              {stockCriticoCount}
-            </span>
-            <span className="text-xs text-rose-600 dark:text-rose-400 font-semibold">Repuestos</span>
-          </div>
-        </div>
-
-        {/* 4. Total Inventario */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-xs flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Total Catálogo
-            </span>
-            <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-              <Package className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-black text-foreground">{totalRepuestos ?? 0}</span>
-            <span className="text-xs text-muted-foreground font-semibold">Piezas</span>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
-      {/* HU-18: Listas de Últimas Órdenes y Stock Bajo */}
+      {/* Listas de Últimas Órdenes y Stock Bajo (HU-18) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Últimas Órdenes de Servicio */}
         <div className="rounded-2xl border border-border bg-card p-5 shadow-xs flex flex-col justify-between">
@@ -169,13 +168,7 @@ async function DashboardContent() {
                     <div className="flex flex-col items-end shrink-0">
                       <span
                         className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                          orden.estado === "Listo"
-                            ? "bg-emerald-500/15 text-emerald-600"
-                            : orden.estado === "En Reparación"
-                            ? "bg-blue-500/15 text-blue-600"
-                            : orden.estado === "Entregado"
-                            ? "bg-purple-500/15 text-purple-600"
-                            : "bg-amber-500/15 text-amber-600"
+                          STATUS_BADGES[orden.estado] || "bg-muted text-foreground"
                         }`}
                       >
                         {orden.estado}

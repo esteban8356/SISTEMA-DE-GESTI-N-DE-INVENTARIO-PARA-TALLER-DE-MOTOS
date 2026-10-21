@@ -3,10 +3,15 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadFilesToBucket, deleteFilesFromBucket } from "@/lib/storage";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { usePhotoUpload } from "@/hooks/use-photo-upload";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
-import { ToastNotification, ToastMessage } from "@/components/ui/toast-notification";
+import { ToastNotification } from "@/components/ui/toast-notification";
 import { Modal } from "@/components/ui/modal";
+import { PhotoUploader } from "@/components/ui/photo-uploader";
+import { PhotoGallery } from "@/components/ui/photo-gallery";
+import { ConfirmDeleteModal } from "@/components/ui/confirm-delete-modal";
 import {
   Search,
   Plus,
@@ -15,7 +20,6 @@ import {
   Eye,
   Package,
   AlertTriangle,
-  UploadCloud,
   X,
   Loader2,
   Image as ImageIcon,
@@ -81,19 +85,26 @@ const INITIAL_FORM = {
 
 export default function InventarioPage() {
   const supabase = useMemo(() => createClient(), []);
+  const { notification, showNotification, clearNotification } = useToast();
+  const {
+    newFiles,
+    newFilePreviews,
+    handleFileChange,
+    removeNewFile,
+    clearNewFiles,
+  } = usePhotoUpload();
 
   const [repuestos, setRepuestos] = useState<Repuesto[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [onlyCriticalStock, setOnlyCriticalStock] = useState(false);
-  const [notification, setNotification] = useState<ToastMessage | null>(null);
 
   // Categorías y Marcas
   const [categoriasList, setCategoriasList] = useState<string[]>(CATEGORIAS_SUGERIDAS);
   const [marcasList, setMarcasList] = useState<string[]>(MARCAS_SUGERIDAS);
 
-  // Modales
+  // Modales y selección
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -101,16 +112,8 @@ export default function InventarioPage() {
 
   // Form State
   const [formData, setFormData] = useState<{ id?: string } & typeof INITIAL_FORM>(INITIAL_FORM);
-  const [newFiles, setNewFiles] = useState<File[]>([]);
-  const [newFilePreviews, setNewFilePreviews] = useState<string[]>([]);
-  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
 
-  const showNotification = useCallback((type: "success" | "error", message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 4000);
-  }, []);
-
-  // Cargar datos iniciales
+  // Cargar inventario
   const fetchRepuestos = useCallback(async () => {
     try {
       setLoading(true);
@@ -122,12 +125,12 @@ export default function InventarioPage() {
       if (error) throw error;
 
       setRepuestos(
-        (data || []).map((item) => ({
+        ((data as any[]) || []).map((item: any) => ({
           ...item,
           fotos: Array.isArray(item.fotos) ? item.fotos : [],
           precio: Number(item.precio || 0),
           stock: Number(item.stock || 0),
-          stock_minimo: item.stock_minimo !== undefined && item.stock_minimo !== null ? Number(item.stock_minimo) : 5,
+          stock_minimo: item.stock_minimo ?? 5,
         }))
       );
     } catch (err: unknown) {
@@ -137,16 +140,17 @@ export default function InventarioPage() {
     }
   }, [supabase, showNotification]);
 
+  // Cargar listas auxiliares
   const fetchCategoriasYMarcas = useCallback(async () => {
     try {
       const [resCat, resMarcas] = await Promise.all([
         supabase.from("categorias").select("nombre").order("nombre", { ascending: true }),
         supabase.from("marcas").select("nombre").order("nombre", { ascending: true }),
       ]);
-      if (resCat.data?.length) setCategoriasList(resCat.data.map((c) => c.nombre));
-      if (resMarcas.data?.length) setMarcasList(resMarcas.data.map((m) => m.nombre));
+      if (resCat.data?.length) setCategoriasList(resCat.data.map((c: { nombre: string }) => c.nombre));
+      if (resMarcas.data?.length) setMarcasList(resMarcas.data.map((m: { nombre: string }) => m.nombre));
     } catch {
-      // Usar sugeridos por defecto
+      // Usar sugerencias por defecto si falla la tabla
     }
   }, [supabase]);
 
@@ -155,23 +159,16 @@ export default function InventarioPage() {
     fetchCategoriasYMarcas();
   }, [fetchRepuestos, fetchCategoriasYMarcas]);
 
-  // Limpiar previews de archivos
-  const clearFilePreviews = useCallback(() => {
-    newFilePreviews.forEach((url) => URL.revokeObjectURL(url));
-    setNewFiles([]);
-    setNewFilePreviews([]);
-  }, [newFilePreviews]);
-
-  // Manejo de Modales
+  // Handlers de modales
   const handleOpenCreate = () => {
-    clearFilePreviews();
+    clearNewFiles();
     setSelectedRepuesto(null);
     setFormData(INITIAL_FORM);
     setIsFormOpen(true);
   };
 
   const handleOpenEdit = (repuesto: Repuesto) => {
-    clearFilePreviews();
+    clearNewFiles();
     setSelectedRepuesto(repuesto);
     setFormData({
       id: repuesto.id,
@@ -190,27 +187,12 @@ export default function InventarioPage() {
 
   const handleOpenDetail = (repuesto: Repuesto) => {
     setSelectedRepuesto(repuesto);
-    setActivePhotoIndex(0);
     setIsDetailOpen(true);
   };
 
   const handleOpenDelete = (repuesto: Repuesto) => {
     setSelectedRepuesto(repuesto);
     setIsDeleteOpen(true);
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length) return;
-    const filesArray = Array.from(e.target.files);
-    setNewFiles((prev) => [...prev, ...filesArray]);
-    const previews = filesArray.map((file) => URL.createObjectURL(file));
-    setNewFilePreviews((prev) => [...prev, ...previews]);
-  };
-
-  const removeNewFile = (index: number) => {
-    URL.revokeObjectURL(newFilePreviews[index]);
-    setNewFiles((prev) => prev.filter((_, i) => i !== index));
-    setNewFilePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeExistingPhoto = (urlToRemove: string) => {
@@ -220,7 +202,7 @@ export default function InventarioPage() {
     }));
   };
 
-  // Guardar Repuesto
+  // Guardar (Crear / Actualizar)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nombre.trim()) {
@@ -231,7 +213,7 @@ export default function InventarioPage() {
     try {
       setSaving(true);
 
-      // Eliminar fotos removidas del storage si estamos editando
+      // Eliminar fotos removidas del storage al editar
       if (selectedRepuesto?.fotos?.length) {
         const removed = selectedRepuesto.fotos.filter((url) => !formData.fotos.includes(url));
         if (removed.length > 0) {
@@ -268,7 +250,7 @@ export default function InventarioPage() {
       }
 
       setIsFormOpen(false);
-      clearFilePreviews();
+      clearNewFiles();
       fetchRepuestos();
     } catch (err: unknown) {
       showNotification("error", err instanceof Error ? err.message : "Error al guardar repuesto.");
@@ -277,7 +259,7 @@ export default function InventarioPage() {
     }
   };
 
-  // Eliminar Repuesto
+  // Eliminar
   const handleDelete = async () => {
     if (!selectedRepuesto) return;
     try {
@@ -299,12 +281,12 @@ export default function InventarioPage() {
     }
   };
 
-  // Conteo de repuestos en alerta de stock
+  // Alertas de stock crítico (HU-14)
   const criticalItems = useMemo(() => {
     return repuestos.filter((item) => item.stock <= (item.stock_minimo ?? 5));
   }, [repuestos]);
 
-  // Filtrado
+  // Filtrado de repuestos
   const filteredRepuestos = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
     return repuestos.filter((item) => {
@@ -325,7 +307,7 @@ export default function InventarioPage() {
 
   return (
     <div className="flex-1 w-full flex flex-col gap-6 max-w-7xl mx-auto">
-      <ToastNotification notification={notification} onClose={() => setNotification(null)} />
+      <ToastNotification notification={notification} onClose={clearNotification} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
@@ -350,7 +332,7 @@ export default function InventarioPage() {
         </button>
       </div>
 
-      {/* HU-14: Banner de Alerta de Stock Crítico */}
+      {/* Banner de Alerta de Stock Crítico (HU-14) */}
       {criticalItems.length > 0 && (
         <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-rose-800 dark:text-rose-200 animate-in fade-in">
           <div className="flex items-center gap-3">
@@ -409,7 +391,7 @@ export default function InventarioPage() {
         </button>
       </div>
 
-      {/* Contenido Tabla / Tarjetas */}
+      {/* Tabla de Repuestos */}
       <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-xs">
         {loading ? (
           <div className="p-16 flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -433,14 +415,14 @@ export default function InventarioPage() {
                   setSearchTerm("");
                   setOnlyCriticalStock(false);
                 }}
-                className="mt-2 text-xs font-semibold text-primary underline underline-offset-4"
+                className="mt-2 text-xs font-semibold text-primary underline underline-offset-4 cursor-pointer"
               >
                 Limpiar filtros
               </button>
             ) : (
               <button
                 onClick={handleOpenCreate}
-                className="mt-2 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                className="mt-2 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Registrar Primer Repuesto
               </button>
@@ -472,7 +454,7 @@ export default function InventarioPage() {
                         isCritical ? "bg-rose-500/[0.03]" : ""
                       }`}
                     >
-                      {/* Nombre y Foto */}
+                      {/* Producto & Foto */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
                           <div className="relative w-12 h-12 rounded-xl bg-muted border overflow-hidden shrink-0 flex items-center justify-center">
@@ -530,7 +512,7 @@ export default function InventarioPage() {
                         </span>
                       </td>
 
-                      {/* Stock con Alerta HU-14 */}
+                      {/* Stock con Alerta */}
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-1 items-start">
                           <span
@@ -705,60 +687,15 @@ export default function InventarioPage() {
             </div>
           </div>
 
-          {/* Gestión de Fotos */}
-          <div className="pt-2 border-t">
-            <label className="block text-xs font-semibold mb-2 text-foreground">
-              Fotos del Repuesto ({formData.fotos.length + newFiles.length})
-            </label>
-
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 mb-3">
-              {/* Fotos existentes */}
-              {formData.fotos.map((url, idx) => (
-                <div key={url} className="relative aspect-square rounded-xl border bg-muted overflow-hidden group">
-                  <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => removeExistingPhoto(url)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
-                    title="Eliminar foto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              {/* Previews de nuevas fotos */}
-              {newFilePreviews.map((preview, idx) => (
-                <div key={preview} className="relative aspect-square rounded-xl border-2 border-primary/40 bg-muted overflow-hidden group">
-                  <img src={preview} alt={`Nueva ${idx + 1}`} className="w-full h-full object-cover" />
-                  <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[9px] px-1.5 py-0.5 rounded font-bold">
-                    Nueva
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeNewFile(idx)}
-                    className="absolute top-1 right-1 p-1 rounded-full bg-rose-600 text-white hover:bg-rose-700 transition-colors shadow-sm"
-                    title="Quitar foto"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              {/* Botón de subida */}
-              <label className="aspect-square rounded-xl border-2 border-dashed border-muted-foreground/30 hover:border-primary/60 bg-muted/20 hover:bg-muted/40 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-colors p-2 text-center">
-                <UploadCloud className="w-6 h-6 text-muted-foreground" />
-                <span className="text-[11px] font-semibold text-muted-foreground">Agregar Foto</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
+          {/* Subida de Fotos Reutilizable */}
+          <PhotoUploader
+            existingPhotos={formData.fotos}
+            newFilePreviews={newFilePreviews}
+            onRemoveExisting={removeExistingPhoto}
+            onRemoveNew={removeNewFile}
+            onFileChange={handleFileChange}
+            label="Fotos del Repuesto"
+          />
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <button
@@ -791,38 +728,12 @@ export default function InventarioPage() {
       >
         {selectedRepuesto && (
           <div className="flex flex-col gap-4">
-            {/* Galería de Fotos */}
-            {selectedRepuesto.fotos?.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <div className="relative aspect-video w-full rounded-2xl bg-muted border overflow-hidden">
-                  <img
-                    src={selectedRepuesto.fotos[activePhotoIndex] || selectedRepuesto.fotos[0]}
-                    alt={selectedRepuesto.nombre}
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                {selectedRepuesto.fotos.length > 1 && (
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {selectedRepuesto.fotos.map((url, idx) => (
-                      <button
-                        key={url}
-                        onClick={() => setActivePhotoIndex(idx)}
-                        className={`relative w-14 h-14 rounded-xl border-2 overflow-hidden shrink-0 transition-all ${
-                          activePhotoIndex === idx ? "border-primary scale-95" : "border-transparent opacity-60"
-                        }`}
-                      >
-                        <img src={url} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="aspect-video w-full rounded-2xl bg-muted border flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                <ImageIcon className="w-8 h-8 opacity-40" />
-                <span className="text-xs">Sin fotos registradas</span>
-              </div>
-            )}
+            {/* Galería Reutilizable */}
+            <PhotoGallery
+              photos={selectedRepuesto.fotos}
+              altTitle={selectedRepuesto.nombre}
+              emptyText="Sin fotos registradas"
+            />
 
             {/* Datos */}
             <div className="grid grid-cols-2 gap-3 p-4 rounded-xl bg-muted/40 border">
@@ -856,11 +767,6 @@ export default function InventarioPage() {
                   {selectedRepuesto.marca_repuesto || "N/A"}
                 </span>
               </div>
-              {selectedRepuesto.created_at && (
-                <div className="col-span-2 text-xs text-muted-foreground pt-2 border-t">
-                  Registrado el: {formatDate(selectedRepuesto.created_at)}
-                </div>
-              )}
             </div>
 
             {selectedRepuesto.descripcion && (
@@ -887,38 +793,15 @@ export default function InventarioPage() {
         )}
       </Modal>
 
-      {/* Modal Eliminar */}
-      <Modal
+      {/* Modal Eliminar Reutilizable */}
+      <ConfirmDeleteModal
         isOpen={isDeleteOpen}
         onClose={() => setIsDeleteOpen(false)}
+        onConfirm={handleDelete}
         title="Confirmar Eliminación"
-        icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
-        maxWidth="md"
-      >
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">
-            ¿Estás seguro de que deseas eliminar permanentemente el repuesto{" "}
-            <span className="font-bold text-foreground">"{selectedRepuesto?.nombre}"</span>? Esta acción también borrará sus fotos asociadas en storage.
-          </p>
-
-          <div className="flex justify-end gap-3 pt-3 border-t">
-            <button
-              onClick={() => setIsDeleteOpen(false)}
-              className="px-4 py-2 text-sm font-semibold rounded-xl border hover:bg-muted transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 transition-colors cursor-pointer"
-            >
-              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-              <span>Eliminar Repuesto</span>
-            </button>
-          </div>
-        </div>
-      </Modal>
+        itemDescription={selectedRepuesto?.nombre || "este repuesto"}
+        loading={saving}
+      />
     </div>
   );
 }

@@ -26,13 +26,16 @@ export default function ProtectedLayout({
         <AuthCheck />
       </Suspense>
       <Sidebar />
-      <main className="flex-1 flex flex-col min-w-0">
-        <nav className="w-full flex justify-end p-4 border-b border-b-foreground/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0">
+      <main className="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
+        <nav className="w-full flex items-center justify-between md:justify-end px-4 py-3 border-b border-b-foreground/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0">
+          <div className="md:hidden flex items-center gap-2 font-extrabold text-base text-foreground">
+            <span className="text-primary font-black">Moto Zone</span>
+          </div>
           <Suspense>
             <AuthButton />
           </Suspense>
         </nav>
-        <div className="flex-1 flex flex-col p-6 overflow-auto">
+        <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-auto">
           {children}
         </div>
       </main>
