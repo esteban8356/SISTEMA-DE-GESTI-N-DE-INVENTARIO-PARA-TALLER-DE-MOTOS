@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Loader2, Wrench } from "lucide-react";
+import { ArrowLeft, Loader2, Wrench } from "lucide-react";
 
 export function LoginForm({
   className,
@@ -109,6 +109,13 @@ export function LoginForm({
                 Crear cuenta
               </Link>
             </div>
+
+            <Button variant="ghost" className="w-full text-muted-foreground" asChild>
+              <Link href="/">
+                <ArrowLeft className="w-4 h-4" />
+                Volver al inicio
+              </Link>
+            </Button>
           </form>
         </CardContent>
       </Card>
