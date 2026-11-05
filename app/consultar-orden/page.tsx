@@ -39,6 +39,8 @@ const PASO_INDEX: Record<string, number> = {
   Entregado: 3,
 };
 
+const MENSAJE_NO_ENCONTRADA = "No se encontró ninguna orden con ese número";
+
 const ESTADO_BADGE_STYLE: Record<string, string> = {
   Listo: "bg-emerald-100 text-emerald-800 border-emerald-300",
   "En Reparación": "bg-blue-100 text-blue-800 border-blue-300",
@@ -66,26 +68,15 @@ export default function ConsultarOrdenPage() {
       setResultado(null);
 
       const supabase = createClient();
-
-      let req = supabase
-        .from("servicios")
-        .select("id, created_at, placa, marca, estado, problema_diagnostico")
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (cleanQuery.length >= 8 && cleanQuery.includes("-")) {
-        req = req.eq("id", cleanQuery);
-      } else {
-        req = req.ilike("placa", cleanQuery);
-      }
-
-      const { data, error } = await req;
+      const { data, error } = await supabase.rpc("consultar_estado_orden", {
+        p_busqueda: cleanQuery,
+      });
       if (error) throw error;
 
-      if (data && data.length > 0) {
-        setResultado(data[0] as ConsultaResultado);
+      if (data && typeof data === "object" && "id" in data && data.id) {
+        setResultado(data as ConsultaResultado);
       } else {
-        setErrorMsg("Orden no encontrada. Verifica el número de orden o la placa de tu moto.");
+        setErrorMsg(MENSAJE_NO_ENCONTRADA);
       }
     } catch {
       setErrorMsg("Ocurrió un error al consultar el estado. Por favor intenta más tarde.");
@@ -169,7 +160,9 @@ export default function ConsultarOrdenPage() {
             <div className="inline-flex p-3 rounded-full bg-rose-100 text-rose-600 mb-2">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-rose-900 mb-1">Orden no encontrada</h3>
+            <h3 className="text-base font-bold text-rose-900 mb-1">
+              {errorMsg === MENSAJE_NO_ENCONTRADA ? "Orden no encontrada" : "No se pudo consultar"}
+            </h3>
             <p className="text-sm text-rose-700 max-w-md mx-auto">{errorMsg}</p>
           </div>
         )}
