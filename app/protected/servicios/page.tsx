@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/modal";
 import { PhotoUploader } from "@/components/ui/photo-uploader";
 import { PhotoGallery } from "@/components/ui/photo-gallery";
 import { ConfirmDeleteModal } from "@/components/ui/confirm-delete-modal";
+import { OrdenRepuestosPanel } from "@/components/orden-repuestos-panel";
 import {
   Search,
   Plus,
@@ -691,6 +692,14 @@ export default function ServiciosPage() {
             label="Fotos del Estado de la Moto / Reparación"
           />
 
+          {selectedServicio?.id ? (
+            <OrdenRepuestosPanel servicioId={selectedServicio.id} showNotification={showNotification} />
+          ) : (
+            <p className="text-xs text-muted-foreground bg-muted/40 border rounded-xl p-3">
+              Guarda la orden para asociar los repuestos usados en la reparación.
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-3 pt-3 border-t">
             <button
               type="button"
@@ -718,7 +727,7 @@ export default function ServiciosPage() {
         title={`Orden: Placa ${selectedServicio?.placa || ""}`}
         subtitle={selectedServicio?.marca || undefined}
         icon={<Bike className="w-5 h-5" />}
-        maxWidth="lg"
+        maxWidth="2xl"
       >
         {selectedServicio && (
           <div className="flex flex-col gap-4">
@@ -782,6 +791,8 @@ export default function ServiciosPage() {
                 {selectedServicio.problema_diagnostico}
               </p>
             </div>
+
+            <OrdenRepuestosPanel servicioId={selectedServicio.id} showNotification={showNotification} />
 
             <div className="flex justify-between items-center gap-2 pt-2 border-t">
               <button
